@@ -1,0 +1,22 @@
+# Logs
+logs/
+*.log
+*.pid
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.local
+
+# Build
+android/
+ios/

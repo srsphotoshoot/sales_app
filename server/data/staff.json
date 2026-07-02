@@ -1,0 +1,16 @@
+[
+  {
+    "id": "STF-1778243617214",
+    "name": "Murari",
+    "code": "MURARI",
+    "isActive": true,
+    "createdAt": "2026-05-08T12:33:37.214Z"
+  },
+  {
+    "id": "STF-1778568296377",
+    "name": "Vikash kumar",
+    "code": "VIKASH",
+    "isActive": true,
+    "createdAt": "2026-05-12T06:44:56.377Z"
+  }
+]
