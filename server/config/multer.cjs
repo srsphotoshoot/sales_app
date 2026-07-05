@@ -47,4 +47,12 @@ const uploadProducts = multer({
     limits: { fileSize: MAX_SIZE_BYTES }
 });
 
-module.exports = { uploadLogo, uploadProducts };
+// Product images now go to Drive, not local disk — memory storage gives us a
+// buffer to hand to the Drive API instead of a file path.
+const uploadProductsToMemory = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: imageFilter,
+    limits: { fileSize: MAX_SIZE_BYTES }
+});
+
+module.exports = { uploadLogo, uploadProducts, uploadProductsToMemory };

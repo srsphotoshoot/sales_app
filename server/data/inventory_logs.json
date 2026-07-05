@@ -1,5 +1,16 @@
 [
   {
+    "id": "LOG-1783240174277-336bc295",
+    "timestamp": "2026-07-05T08:29:34.277Z",
+    "action": "SALE",
+    "uid": "srs_2627060001448",
+    "name": "7024",
+    "prevQty": 9,
+    "newQty": 7,
+    "orderId": "ORD-1783240174246-cb632314",
+    "user": "Admin"
+  },
+  {
     "id": "LOG-1782646781133",
     "timestamp": "2026-06-28T11:39:41.133Z",
     "action": "SALE",

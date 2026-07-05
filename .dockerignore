@@ -1,0 +1,18 @@
+node_modules
+dist
+android
+ios
+.git
+.idea
+.vscode
+.claude
+logs
+*.log
+*.pid
+.env
+.env.example
+docs
+# Real business data lives on the Fly volume, not baked into the image —
+# server.cjs creates empty defaults if these are missing on first boot.
+server/data
+server/service_account.json

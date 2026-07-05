@@ -1,0 +1,36 @@
+[
+  {
+    "id": "USR-1778243617214",
+    "name": "Admin",
+    "email": "srsphotoshoot@gmail.com",
+    "role": "Admin",
+    "isActive": true,
+    "createdAt": "2026-07-05T00:00:00.000Z"
+  },
+  {
+    "id": "STF-1778243617214",
+    "name": "Murari",
+    "email": "",
+    "code": "MURARI",
+    "role": "Staff",
+    "isActive": true,
+    "createdAt": "2026-05-08T12:33:37.214Z"
+  },
+  {
+    "id": "STF-1778568296377",
+    "name": "Vikash kumar",
+    "email": "",
+    "code": "VIKASH",
+    "role": "Staff",
+    "isActive": true,
+    "createdAt": "2026-05-12T06:44:56.377Z"
+  },
+  {
+    "id": "STF-1783236550326",
+    "name": "SHREE RADHA STUDIO",
+    "email": "shreeradhastudio@gmail.com",
+    "role": "Staff",
+    "isActive": true,
+    "createdAt": "2026-07-05T07:29:10.326Z"
+  }
+]

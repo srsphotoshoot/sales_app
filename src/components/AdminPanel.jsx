@@ -217,7 +217,7 @@ const AdminPanel = ({ onBack, activeApiUrl, products, onRefresh, overrideToken }
     setTabLoading(true);
     try {
       const headers = await getHeaders();
-      const res = await safeFetch('/api/admin/staff', { headers });
+      const res = await safeFetch('/api/admin/users', { headers });
       const data = await res.json();
       setStaff(Array.isArray(data) ? data : []);
     } catch (err) { console.error(err); }
@@ -300,10 +300,10 @@ const AdminPanel = ({ onBack, activeApiUrl, products, onRefresh, overrideToken }
   };
 
   const handleDeleteStaff = async (id) => {
-    if (!window.confirm("Delete staff?")) return;
+    if (!window.confirm("Delete user?")) return;
     try {
       const headers = await getHeaders();
-      await safeFetch(`/api/admin/staff/${id}`, { method: 'DELETE', headers });
+      await safeFetch(`/api/admin/users/${id}`, { method: 'DELETE', headers });
       fetchStaff();
     } catch (e) { alert("Delete failed"); }
   };
@@ -311,7 +311,7 @@ const AdminPanel = ({ onBack, activeApiUrl, products, onRefresh, overrideToken }
   const handleToggleStaff = async (id) => {
     try {
       const headers = await getHeaders();
-      await safeFetch('/api/admin/staff/toggle', {
+      await safeFetch('/api/admin/users/toggle', {
         method: 'POST',
         headers,
         body: JSON.stringify({ id })
@@ -320,17 +320,21 @@ const AdminPanel = ({ onBack, activeApiUrl, products, onRefresh, overrideToken }
     } catch (e) { alert("Toggle failed"); }
   };
 
-  const handleAddStaff = async (name, code) => {
+  const handleAddStaff = async (name, email, role) => {
     setLoading(true);
     try {
       const headers = await getHeaders();
-      await safeFetch('/api/admin/staff/add', {
+      const res = await safeFetch('/api/admin/users/add', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ name, code })
+        body: JSON.stringify({ name, email, role })
       });
+      const data = await res.json();
+      if (!data.success) { alert(data.message || 'Failed to register user'); return; }
       fetchStaff();
-      alert("Staff registered!");
+      alert(data.driveShared
+        ? "User registered — they now have access to the product photos Drive folder."
+        : "User registered, but sharing the Drive folder failed — check SALES_APP_DRIVE_FOLDER_ID / service account setup and re-add if needed.");
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
   };
@@ -458,7 +462,7 @@ const AdminPanel = ({ onBack, activeApiUrl, products, onRefresh, overrideToken }
       <div className="scroll-tabs" style={{ background: 'rgba(255,255,255,0.02)' }}>
         {[
           { id: 'keys', icon: Key, label: 'Keys' },
-          { id: 'staff', icon: Users, label: 'Staff' },
+          { id: 'staff', icon: Users, label: 'Users' },
           { id: 'branding', icon: Settings, label: 'Branding' },
           { id: 'inventory', icon: Package, label: 'Inventory' },
           { id: 'bulk', icon: FileUp, label: 'Bulk Upload' },

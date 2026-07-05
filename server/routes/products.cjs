@@ -6,7 +6,8 @@ const { fetchFromHub, pushToHub } = require('../utils/hub.cjs');
 const { globalLock } = require('../utils/shared.cjs');
 const { logInventoryAction } = require('../utils/logging.cjs');
 const { checkAuth, isAdmin } = require('../middleware/auth.cjs');
-const { uploadProducts } = require('../config/multer.cjs');
+const { uploadProductsToMemory } = require('../config/multer.cjs');
+const { uploadImageToDrive } = require('../config/googleDrive.cjs');
 const { PRODUCTS_FILE } = require('../config/paths.cjs');
 
 // Products: Fetch list
@@ -125,8 +126,9 @@ router.post('/update', checkAuth, async (req, res) => {
     }
 });
 
-// Admin: Bulk Image Upload
-router.post('/bulk-images', checkAuth, isAdmin, uploadProducts.array('images'), async (req, res) => {
+// Admin: Bulk Image Upload — images go to the shared Drive folder, not local
+// disk, so staff can load them straight from their own (shared) Drive.
+router.post('/bulk-images', checkAuth, isAdmin, uploadProductsToMemory.array('images'), async (req, res) => {
     const files = req.files;
     if (!files || files.length === 0) return res.status(400).json({ success: false, message: 'No images uploaded' });
 
@@ -145,8 +147,7 @@ router.post('/bulk-images', checkAuth, isAdmin, uploadProducts.array('images'), 
             }
         });
 
-        files.forEach((file) => {
-            const fileName = file.filename;
+        for (const file of files) {
             const originalName = file.originalname;
             const lowercaseName = originalName.toLowerCase();
             let matches = [];
@@ -171,26 +172,38 @@ router.post('/bulk-images', checkAuth, isAdmin, uploadProducts.array('images'), 
                 );
             }
 
+            if (matches.length === 0) continue;
+
+            const fileId = await uploadImageToDrive(file.buffer, originalName, file.mimetype);
             matches.forEach(p => {
-                p.imageUrl = `/uploads/products/${fileName}`;
+                p.imageUrl = `drive:${fileId}`;
                 updatedProducts.push(p);
             });
-        });
+        }
 
         if (updatedProducts.length > 0) {
             saveAtomic(PRODUCTS_FILE, products);
             updatedProducts.forEach(p => pushToHub('sales_app_products', p));
         }
         res.json({ success: true, updatedCount: updatedProducts.length });
+    } catch (err) {
+        console.error('[PRODUCTS] Bulk image upload failed:', err.message);
+        res.status(500).json({ success: false, message: 'Drive upload failed: ' + err.message });
     } finally {
         release();
     }
 });
 
-// Admin: Single image upload → returns stored URL
-router.post('/upload-image', checkAuth, isAdmin, uploadProducts.single('image'), (req, res) => {
+// Admin: Single image upload → returns a drive:<fileId> reference
+router.post('/upload-image', checkAuth, isAdmin, uploadProductsToMemory.single('image'), async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
-    res.json({ success: true, url: `/uploads/products/${req.file.filename}` });
+    try {
+        const fileId = await uploadImageToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
+        res.json({ success: true, url: `drive:${fileId}` });
+    } catch (err) {
+        console.error('[PRODUCTS] Image upload failed:', err.message);
+        res.status(500).json({ success: false, message: 'Drive upload failed: ' + err.message });
+    }
 });
 
 // Admin: Get all color variants of a product by base ID

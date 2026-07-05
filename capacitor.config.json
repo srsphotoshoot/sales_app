@@ -1,5 +1,13 @@
 {
   "appId": "com.salessrs.app",
   "appName": "Sales SRS",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email", "https://www.googleapis.com/auth/drive.readonly"],
+      "clientId": "84407657314-cde3i9c39chnsvmk4plloiq5aktb60kq.apps.googleusercontent.com",
+      "serverClientId": "84407657314-cde3i9c39chnsvmk4plloiq5aktb60kq.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    }
+  }
 }

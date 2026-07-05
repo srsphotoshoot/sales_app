@@ -1,0 +1,28 @@
+app = "sales-srs"
+primary_region = "bom"
+
+[build]
+  [build.args]
+    VITE_API_URL = ""
+    VITE_GOOGLE_CLIENT_ID = ""
+
+[env]
+  PORT = "4000"
+  NODE_ENV = "production"
+
+[[mounts]]
+  source = "sales_srs_data"
+  destination = "/app/server/data"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

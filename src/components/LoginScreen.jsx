@@ -1,67 +1,34 @@
-import React, { useState } from 'react';
-import { Lock, Smartphone, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Smartphone, AlertCircle, Loader2 } from 'lucide-react';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { googleLogin } from '../services/api';
 
-const LoginScreen = ({ onLogin, activeApiUrl, onAdminRequest }) => {
-  const [pin, setPin] = useState('');
+const LoginScreen = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
-  const clickRef = React.useRef(0);
-  const lastClickRef = React.useRef(0);
 
-  const handleIconClick = () => {
-    const now = Date.now();
-    // Relaxed timing to 800ms for mobile taps
-    if (now - lastClickRef.current < 800) {
-      clickRef.current += 1;
-    } else {
-      clickRef.current = 1;
-    }
-    lastClickRef.current = now;
-    if (clickRef.current >= 5) {
-      onAdminRequest();
-      clickRef.current = 0;
-    }
-  };
+  useEffect(() => {
+    GoogleAuth.initialize();
+  }, []);
 
-  const handleSubmit = async (e, overridePin = null) => {
-    if (e) e.preventDefault();
-    const currentPin = overridePin || pin;
-    
-    if (!currentPin) {
-      setError('Please enter a code');
-      return;
-    }
-
-    setLoading(true);
+  const handleGoogleSignIn = async () => {
     setError('');
-
+    setLoading(true);
     try {
-      const endpoint = '/api/auth/verify-staff';
-      const apiBase = activeApiUrl || import.meta.env.VITE_API_URL || '';
-      const response = await fetch(`${apiBase}${endpoint}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
-        body: JSON.stringify({ code: currentPin })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        onLogin(data.sessionToken, data.name || '');
-      } else {
-        setError(data.message || 'Invalid code. Please ask Admin for access.');
-      }
+      const googleUser = await GoogleAuth.signIn();
+      const { idToken, accessToken } = googleUser.authentication;
+      const data = await googleLogin(idToken);
+      onLogin(data.token, data.name, data.role, accessToken);
     } catch (err) {
-      setError(`SRS Backend is offline. Please check your connection or contact Admin.`);
+      if (err?.message === 'popup_closed_by_user' || err?.message?.toLowerCase().includes('cancel')) {
+        setError('Google sign-in was cancelled.');
+      } else {
+        setError(err.message || 'Sign-in failed. Ask Admin to add your email.');
+      }
     } finally {
       setLoading(false);
     }
   };
-
 
   return (
     <div className="login-overlay" style={{
@@ -86,103 +53,75 @@ const LoginScreen = ({ onLogin, activeApiUrl, onAdminRequest }) => {
         border: '1px solid rgba(255, 255, 255, 0.1)',
         textAlign: 'center'
       }}>
-        <div 
-          onClick={handleIconClick}
-          style={{
-            width: '80px',
-            height: '80px',
-            borderRadius: '24px',
-            background: 'rgba(255, 255, 255, 0.05)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 24px',
-            padding: '4px',
-            cursor: 'pointer',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}
-        >
-          <img 
-            src="/icon-512.png" 
-            alt="Logo" 
-            style={{ width: '100%', height: '100%', borderRadius: '20px', objectFit: 'cover' }} 
+        <div style={{
+          width: '80px',
+          height: '80px',
+          borderRadius: '24px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 24px',
+          padding: '4px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          <img
+            src="/icon-512.png"
+            alt="Logo"
+            style={{ width: '100%', height: '100%', borderRadius: '20px', objectFit: 'cover' }}
           />
         </div>
 
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '8px' }}>Internal Access</h2>
         <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem', marginBottom: '32px' }}>
-          Please enter your Permanent Staff Code provided by the administrator.
+          Sign in with the Google account your Admin registered for you.
         </p>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ position: 'relative', marginBottom: '20px' }}>
-            <input
-              type="text"
-              placeholder="Enter Staff Code"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.toUpperCase())}
-              style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                background: 'rgba(255, 255, 255, 0.05)',
-                color: 'white',
-                fontSize: '1.2rem',
-                textAlign: 'center',
-                outline: 'none',
-                transition: 'all 0.3s'
-              }}
-              autoFocus
-            />
+        {error && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#ef4444',
+            fontSize: '0.85rem',
+            marginBottom: '20px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            padding: '12px',
+            borderRadius: '8px',
+            textAlign: 'left'
+          }}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
           </div>
+        )}
 
-          {error && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              color: '#ef4444', 
-              fontSize: '0.85rem', 
-              marginBottom: '20px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              padding: '12px',
-              borderRadius: '8px',
-              textAlign: 'left'
-            }}>
-              <AlertCircle size={16} />
-              <span>{error}</span>
-            </div>
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: '12px',
+            background: loading ? 'rgba(255,255,255,0.2)' : 'white',
+            color: '#0f172a',
+            border: 'none',
+            fontSize: '1rem',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            transition: 'all 0.3s',
+          }}
+        >
+          {loading ? <Loader2 className="spinner" size={20} /> : (
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.3 29.4 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.3 2.7l6-6C33.7 6.5 29.1 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 18.9 13 24 13c2.8 0 5.3 1 7.3 2.7l6-6C33.7 6.5 29.1 4.5 24 4.5c-7.7 0-14.4 4.4-17.7 10.2z"/><path fill="#4CAF50" d="M24 43.5c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.6 2.3-7.2 2.3-5.3 0-9.8-3.6-11.4-8.4l-6.5 5C9.5 39 16.2 43.5 24 43.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2 3.7-3.7 5l6.2 5.2C40.7 35.7 43.5 30.2 43.5 24c0-1.2-.1-2.4-.4-3.5z"/></svg>
           )}
-
-          <button
-            type="submit"
-            disabled={loading || !pin}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: '12px',
-              background: loading ? 'rgba(16, 185, 129, 0.5)' : '#10b981',
-              color: 'white',
-              border: 'none',
-              fontSize: '1rem',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              cursor: pin ? 'pointer' : 'not-allowed',
-              transition: 'all 0.3s',
-              boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
-            }}
-          >
-            {loading ? <Loader2 className="spinner" size={20} /> : 'Unlock App'}
-            {!loading && <ChevronRight size={20} />}
-          </button>
-        </form>
-
-
+          {loading ? 'Signing in…' : 'Sign in with Google'}
+        </button>
 
         <div style={{ marginTop: '32px', color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>

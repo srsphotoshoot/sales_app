@@ -21,7 +21,7 @@ if (fs.existsSync(envPath)) {
 
 const {
     DATA_DIR, UPLOADS_DIR, PRODUCT_IMAGES_DIR,
-    KEYS_FILE, PRODUCTS_FILE, SALES_FILE, LOGS_FILE, SESSIONS_FILE, STAFF_FILE, BRANDING_FILE, EXHIBITION_FILE
+    KEYS_FILE, PRODUCTS_FILE, SALES_FILE, LOGS_FILE, USERS_FILE, BRANDING_FILE, EXHIBITION_FILE
 } = require('./config/paths.cjs');
 
 const app = express();
@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 5001;
 });
 
 // Initialize array-based files if they don't exist
-[KEYS_FILE, PRODUCTS_FILE, SALES_FILE, LOGS_FILE, SESSIONS_FILE, STAFF_FILE, EXHIBITION_FILE].forEach(file => {
+[KEYS_FILE, PRODUCTS_FILE, SALES_FILE, LOGS_FILE, USERS_FILE, EXHIBITION_FILE].forEach(file => {
     if (!fs.existsSync(file)) {
         fs.writeFileSync(file, JSON.stringify([]));
     }

@@ -2,11 +2,21 @@ import { Preferences } from '@capacitor/preferences';
 
 const FALLBACK_API_URL = import.meta.env.VITE_API_URL || '';
 
+// Google Drive access_token, held in memory only (not persisted — it's
+// short-lived and re-obtained via Google Sign-In each session). Set by
+// App.jsx right after login / silent refresh.
+let driveAccessToken = null;
+export const setDriveAccessToken = (token) => { driveAccessToken = token; };
+export const getDriveAccessToken = () => driveAccessToken;
+
 // Universal Image Fixer for rock-solid asset loading across local/ngrok/CDN
 export const getAbsoluteImageUrl = (path, baseUrl = '', thumbnailWidth = null) => {
   if (!path) return '';
   const lower = path.toLowerCase();
 
+  if (lower.startsWith('drive:')) {
+    return `https://www.googleapis.com/drive/v3/files/${path.slice(6)}?alt=media`;
+  }
   if (lower.startsWith('http') || lower.startsWith('data:')) return path;
 
   let cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -153,8 +163,13 @@ export const fetchImageBlobUrl = async (url) => {
   if (!url) return null;
   if (!url.startsWith('http')) return url;
   if (blobUrlCache.has(url)) return blobUrlCache.get(url);
+  const isDrive = url.startsWith('https://www.googleapis.com/drive/');
+  if (isDrive && !driveAccessToken) return null; // not signed in with Drive scope yet
   try {
-    const response = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+    const headers = isDrive
+      ? { Authorization: `Bearer ${driveAccessToken}` }
+      : { 'ngrok-skip-browser-warning': 'true' };
+    const response = await fetch(url, { headers });
     if (!response.ok) return null;
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
@@ -163,6 +178,19 @@ export const fetchImageBlobUrl = async (url) => {
   } catch (e) {
     return null;
   }
+};
+
+// Google Sign-In: exchange a Google OAuth access_token for our own app JWT.
+export const googleLogin = async (idToken) => {
+  const baseUrl = await getBaseUrl();
+  const response = await fetch(`${baseUrl}/api/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+    body: JSON.stringify({ id_token: idToken })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) throw new Error(data.message || 'Google login failed');
+  return data; // { token, name, role }
 };
 
 export const fetchExhibition = async () => {

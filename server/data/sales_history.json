@@ -1,1 +1,39 @@
-[]
+[
+  {
+    "orderId": "ORD-1783240174246-cb632314",
+    "timestamp": "2026-07-05T08:29:34.246Z",
+    "customer": {
+      "name": "VED PRAKASH GOEL",
+      "gst": "",
+      "contact": "9810360040",
+      "address": "Address: A-25 Lower Ground Floor, Lajpat Nagar-l, New Delhi",
+      "createdBy": "Sjj"
+    },
+    "createdBy": "Admin",
+    "cart": [
+      {
+        "uid": "srs_2627060001448",
+        "id": "7024",
+        "name": "7024",
+        "compulsoryData": "",
+        "colors": [],
+        "color": "PEACH",
+        "rate": 2695,
+        "pcs": 9,
+        "barcodes": [
+          "2627060001448",
+          "26270002749"
+        ],
+        "ageDays": 0,
+        "isClearance": false,
+        "source": "srs",
+        "timestamp": "2026-06-28T08:42:39.227Z",
+        "type": "sale",
+        "cartId": 1783240170525.0835,
+        "qty": 2
+      }
+    ],
+    "totalItems": 2,
+    "totalValue": 5390
+  }
+]

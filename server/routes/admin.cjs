@@ -6,8 +6,9 @@ const { pushToHub } = require('../utils/hub.cjs');
 const { globalLock } = require('../utils/shared.cjs');
 const { checkAuth, isAdmin } = require('../middleware/auth.cjs');
 const { uploadLogo } = require('../config/multer.cjs');
-const { 
-    KEYS_FILE, STAFF_FILE, BRANDING_FILE 
+const { shareDriveFolder } = require('../config/googleDrive.cjs');
+const {
+    KEYS_FILE, USERS_FILE, BRANDING_FILE
 } = require('../config/paths.cjs');
 
 // Helper to save keys
@@ -44,53 +45,67 @@ router.get('/active-keys', checkAuth, isAdmin, (req, res) => {
     res.json(activeKeys);
 });
 
-// Admin: Staff Management
-router.get('/staff', checkAuth, (req, res) => {
-    res.json(safeReadJSON(STAFF_FILE));
+// Admin: User Management (Google-account based — replaces the old staff-code system)
+router.get('/users', checkAuth, (req, res) => {
+    res.json(safeReadJSON(USERS_FILE));
 });
 
-router.post('/staff/add', checkAuth, isAdmin, async (req, res) => {
-    const { name, code } = req.body;
-    if (!name || !code) return res.status(400).json({ success: false, message: 'Name and Code required' });
+router.post('/users/add', checkAuth, isAdmin, async (req, res) => {
+    const { name, email, role } = req.body;
+    if (!name || !email || !['Admin', 'Staff'].includes(role)) {
+        return res.status(400).json({ success: false, message: 'Name, email and a valid role (Admin/Staff) are required' });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
 
     const release = await globalLock.acquire();
     try {
-        const staff = safeReadJSON(STAFF_FILE);
-        if (staff.find(s => s.code === code)) {
-            return res.status(400).json({ success: false, message: 'Code already in use' });
+        const users = safeReadJSON(USERS_FILE);
+        if (users.find(u => (u.email || '').toLowerCase() === cleanEmail)) {
+            return res.status(400).json({ success: false, message: 'This email is already registered' });
         }
 
-        const newStaff = {
-            id: generateID('STF'),
+        const newUser = {
+            id: generateID('USR'),
             name,
-            code,
+            email: cleanEmail,
+            role,
             isActive: true,
             createdAt: new Date().toISOString()
         };
-        staff.push(newStaff);
-        saveAtomic(STAFF_FILE, staff);
-        pushToHub('sales_app_staff', { ...newStaff, _action: 'ADD' });
-        
-        res.json({ success: true });
+        users.push(newUser);
+        saveAtomic(USERS_FILE, users);
+        pushToHub('sales_app_users', { ...newUser, _action: 'ADD' });
+
+        // Share the catalog images folder with them so their own Drive can serve
+        // product images directly — best-effort, don't fail the whole request if it errors.
+        let driveShared = false;
+        try {
+            await shareDriveFolder(cleanEmail);
+            driveShared = true;
+        } catch (driveErr) {
+            console.error('[USERS] Drive share failed for', cleanEmail, ':', driveErr.message);
+        }
+
+        res.json({ success: true, driveShared });
     } catch (err) {
-        console.error('[STAFF] Addition failed:', err);
+        console.error('[USERS] Addition failed:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     } finally {
         release();
     }
 });
 
-router.post('/staff/toggle', checkAuth, isAdmin, async (req, res) => {
+router.post('/users/toggle', checkAuth, isAdmin, async (req, res) => {
     const { id } = req.body;
     const release = await globalLock.acquire();
     try {
-        const staff = safeReadJSON(STAFF_FILE);
-        const idx = staff.findIndex(s => s.id === id);
+        const users = safeReadJSON(USERS_FILE);
+        const idx = users.findIndex(u => u.id === id);
         if (idx !== -1) {
-            staff[idx].isActive = !staff[idx].isActive;
-            saveAtomic(STAFF_FILE, staff);
-            pushToHub('sales_app_staff', { ...staff[idx], _action: 'TOGGLE' });
-            res.json({ success: true, isActive: staff[idx].isActive });
+            users[idx].isActive = !users[idx].isActive;
+            saveAtomic(USERS_FILE, users);
+            pushToHub('sales_app_users', { ...users[idx], _action: 'TOGGLE' });
+            res.json({ success: true, isActive: users[idx].isActive });
         } else {
             res.status(404).json({ success: false });
         }
@@ -99,17 +114,17 @@ router.post('/staff/toggle', checkAuth, isAdmin, async (req, res) => {
     }
 });
 
-router.delete('/staff/:id', checkAuth, isAdmin, async (req, res) => {
+router.delete('/users/:id', checkAuth, isAdmin, async (req, res) => {
     const release = await globalLock.acquire();
     try {
-        let staff = safeReadJSON(STAFF_FILE);
-        const memberToDelete = staff.find(s => s.id === req.params.id);
-        
-        staff = staff.filter(s => s.id !== req.params.id);
-        saveAtomic(STAFF_FILE, staff);
-        
-        if (memberToDelete) {
-            pushToHub('sales_app_staff', { ...memberToDelete, _action: 'DELETE', isActive: false });
+        let users = safeReadJSON(USERS_FILE);
+        const userToDelete = users.find(u => u.id === req.params.id);
+
+        users = users.filter(u => u.id !== req.params.id);
+        saveAtomic(USERS_FILE, users);
+
+        if (userToDelete) {
+            pushToHub('sales_app_users', { ...userToDelete, _action: 'DELETE', isActive: false });
         }
         res.json({ success: true });
     } finally {

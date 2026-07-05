@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Filter, History, Sparkles, TrendingUp, BarChart3, ShoppingBag, Plus, LogOut, User, AlertTriangle, Package, Menu, QrCode, BookOpen, Award } from 'lucide-react';
 import { Preferences } from '@capacitor/preferences';
-import { fetchProducts, getBaseUrl, getAbsoluteImageUrl } from './services/api';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { fetchProducts, getBaseUrl, getAbsoluteImageUrl, setDriveAccessToken } from './services/api';
 import AuthImage from './components/AuthImage.jsx';
 import ImageLightbox from './components/ImageLightbox.jsx';
 import SalesSection from './components/SalesSection';
@@ -23,14 +24,10 @@ const App = () => {
   // Auth & Admin State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
-  const [isAdminAuth, setIsAdminAuth] = useState(false);
+  const [role, setRole] = useState(null); // 'Admin' | 'Staff' | 'Guest' — set by Google login, signed server-side
+  const [driveConnected, setDriveConnected] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  
-  const headerClickRef = useRef(0);
-  const lastClickTimeRef = useRef(0);
-  const [showPinEntry, setShowPinEntry] = useState(false);
-  const [enteredPin, setEnteredPin] = useState('');
-  const [pinError, setPinError] = useState('');
+
   const [activeToken, setActiveToken] = useState(null);
   const [currentStaffName, setCurrentStaffName] = useState('');
   const [branding, setBranding] = useState({ logoUrl: '', logoPosition: 'top-right' });
@@ -64,31 +61,49 @@ const App = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
+  // Google Drive access_token is memory-only (see services/api.js) so a page
+  // reload loses it even though the app session (JWT) is still valid. This
+  // silently re-requests it without a full re-login.
+  useEffect(() => {
+    GoogleAuth.initialize();
+  }, []);
+
+  const reconnectDrive = async (interactive = false) => {
+    try {
+      const result = interactive
+        ? await GoogleAuth.signIn()
+        : await GoogleAuth.refresh();
+      const accessToken = result.authentication?.accessToken || result.accessToken;
+      if (accessToken) {
+        setDriveAccessToken(accessToken);
+        setDriveConnected(true);
+      }
+    } catch {} // silent — user can retry via the reconnect button
+  };
+
   const checkSession = async (providedUrl) => {
     try {
       const baseUrl = providedUrl || currentApiUrl;
       const { value: sessionData } = await Preferences.get({ key: 'auth_session' });
       if (sessionData) {
-          const { timestamp, token, role, staffName } = JSON.parse(sessionData);
+          const { timestamp, token, role: savedRole, staffName } = JSON.parse(sessionData);
           const now = Date.now();
           const twoHours = 2 * 60 * 60 * 1000;
 
           if (now - timestamp < twoHours) {
             setIsAuthenticated(true);
             setActiveToken(token);
+            setRole(savedRole);
             if (staffName) setCurrentStaffName(staffName);
 
-            // Admin panel: only keep open during visibility changes (isAdminAuth already true),
-            // never auto-restore on cold start — re-auth via PIN required for security
-            if (role === 'Admin' && isAdminAuth) {
-              setShowAdmin(true);
-            }
+            // Drive token doesn't survive a reload — try to get it back silently.
+            reconnectDrive(false);
 
             // Update timestamp on every successful check (prolongs session while active)
             // staffName must be preserved so PDFs and order records stay attributed correctly
             await Preferences.set({
               key: 'auth_session',
-              value: JSON.stringify({ token, timestamp: now, role, staffName })
+              value: JSON.stringify({ token, timestamp: now, role: savedRole, staffName })
             });
         } else {
           handleLogout();
@@ -121,36 +136,34 @@ const App = () => {
     return url;
   };
 
-  const handleLogin = async (token, staffName = '') => {
+  const handleLogin = async (token, staffName = '', userRole = 'Staff', driveAccessToken = null) => {
     const now = Date.now();
     await Preferences.set({
       key: 'auth_session',
-      value: JSON.stringify({ token, timestamp: now, role: 'Staff', staffName })
+      value: JSON.stringify({ token, timestamp: now, role: userRole, staffName })
     });
     setIsAuthenticated(true);
     setActiveToken(token);
     setCurrentStaffName(staffName);
+    setRole(userRole);
+    if (driveAccessToken) {
+      setDriveAccessToken(driveAccessToken);
+      setDriveConnected(true);
+    }
   };
 
   const handleLogout = async () => {
     await Preferences.remove({ key: 'auth_session' });
     setIsAuthenticated(false);
-    setIsAdminAuth(false);
+    setRole(null);
     setActiveToken(null);
     setShowAdmin(false);
+    setDriveAccessToken(null);
+    setDriveConnected(false);
   };
 
-  const handleAdminBack = async () => {
-    const { value: sessionData } = await Preferences.get({ key: 'auth_session' });
-    if (sessionData) {
-      const parsed = JSON.parse(sessionData);
-      await Preferences.set({
-        key: 'auth_session',
-        value: JSON.stringify({ ...parsed, role: 'Staff' })
-      });
-    }
+  const handleAdminBack = () => {
     setShowAdmin(false);
-    setIsAdminAuth(false);
   };
 
   useEffect(() => {
@@ -196,59 +209,6 @@ const App = () => {
     return () => clearTimeout(timer);
   }, [search, isAuthenticated]);
 
-  const handleHeaderClick = () => {
-    const now = Date.now();
-    // Relaxed timing to 800ms for mobile taps
-    if (now - lastClickTimeRef.current < 800) {
-      headerClickRef.current += 1;
-    } else {
-      headerClickRef.current = 1;
-    }
-    lastClickTimeRef.current = now;
-
-    if (headerClickRef.current >= 5) {
-      headerClickRef.current = 0;
-      setShowPinEntry(true);
-    }
-  };
-
-  const handlePinSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const baseUrl = await getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/auth/verify-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-        body: JSON.stringify({ pin: enteredPin })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Essential: Save the Admin Token so AdminPanel fetches are authorized
-        await Preferences.set({
-          key: 'auth_session',
-          value: JSON.stringify({ token: data.sessionToken, timestamp: Date.now(), role: 'Admin' })
-        });
-
-        setIsAdminAuth(true);
-        setIsAuthenticated(true); // Grant access to the app shell
-        setActiveToken(data.sessionToken);
-        setShowAdmin(true);
-        setShowPinEntry(false);
-        setEnteredPin('');
-      } else {
-        setPinError(data.message || 'Invalid Master PIN');
-        setEnteredPin('');
-      }
-    } catch (err) {
-      setPinError('Security server unreachable. Check connection.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const filteredProducts = React.useMemo(() => {
     let result = [...products];
     if (activeTab === 'clearance') {
@@ -282,35 +242,10 @@ const App = () => {
     );
   }
 
-  const PinEntryUI = showPinEntry ? (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '320px', padding: '30px', textAlign: 'center', border: '1px solid var(--accent-old)' }}>
-        <h3 style={{ marginBottom: '20px' }}>Admin Verification</h3>
-        <form onSubmit={handlePinSubmit}>
-          <input
-            type="password"
-            inputMode="numeric"
-            autoFocus
-            placeholder="****"
-            value={enteredPin}
-            onChange={(e) => { setEnteredPin(e.target.value); setPinError(''); }}
-            style={{ width: '100%', padding: '15px', borderRadius: '12px', border: `1px solid ${pinError ? '#ef4444' : 'var(--glass-border)'}`, background: '#0f172a', color: 'white', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '10px', marginBottom: pinError ? '8px' : '20px' }}
-          />
-          {pinError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '16px' }}>{pinError}</p>}
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button type="button" onClick={() => { setShowPinEntry(false); setEnteredPin(''); setPinError(''); }} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'transparent', color: 'white' }}>Cancel</button>
-            <button type="submit" style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--accent-old)', color: 'white', fontWeight: '700' }}>Verify</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  ) : null;
-
   if (!isAuthenticated) {
     return (
       <div className="app-container">
-        {PinEntryUI}
-        <LoginScreen onLogin={handleLogin} activeApiUrl={currentApiUrl} onAdminRequest={() => setShowPinEntry(true)} />
+        <LoginScreen onLogin={handleLogin} />
       </div>
     );
   }
@@ -340,10 +275,9 @@ const App = () => {
     );
   }
 
-  if (showAdmin && isAdminAuth) {
+  if (showAdmin && role === 'Admin') {
     return (
       <div className="app-container">
-        {PinEntryUI}
         <AdminPanel
           onBack={handleAdminBack}
           activeApiUrl={currentApiUrl} 
@@ -372,14 +306,23 @@ const App = () => {
           >
             <Menu size={28} />
           </button>
-          <img src="/icon-512.png" alt="SRS Logo" onClick={handleHeaderClick} style={{ width: '40px', height: '40px', borderRadius: '10px', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', objectFit: 'cover', cursor: 'pointer' }} />
+          <img src="/icon-512.png" alt="SRS Logo" style={{ width: '40px', height: '40px', borderRadius: '10px', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', objectFit: 'cover' }} />
 
-          <div onClick={handleHeaderClick} style={{ cursor: 'pointer' }}>
+          <div>
             <h1>Sales SRS</h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>AI Powered Stock Strategy</p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {!driveConnected && (
+            <button
+              onClick={() => reconnectDrive(true)}
+              title="Product photos need Google Drive access — tap to reconnect"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#f59e0b', borderRadius: '8px', padding: '6px 10px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}
+            >
+              Reconnect Photos
+            </button>
+          )}
           <div className="stats-icon">
             <BarChart3 size={24} color="var(--accent-old)" />
           </div>
@@ -645,8 +588,8 @@ const App = () => {
                 Exhibition
               </button>
 
-              {showAdmin && (
-                <button 
+              {role === 'Admin' && (
+                <button
                   onClick={() => { setShowSidebar(false); setShowAdmin(true); }}
                   style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderRadius: '12px', background: 'var(--secondary-bg)', border: '1px solid var(--glass-border)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: '600', cursor: 'pointer' }}
                 >
